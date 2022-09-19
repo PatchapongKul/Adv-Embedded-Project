@@ -1,7 +1,10 @@
 #include <NTPClient.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <esp_task_wdt.h>
 #include "secrets.h"
+
+#define WDT_TIMEOUT 5
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
@@ -10,6 +13,9 @@ void updateNTP( void * parameter );
 void displaySerial( void * parameter );
 
 void setup(){
+  esp_task_wdt_init(WDT_TIMEOUT, true); // Initialize the Task Watchdog Timer
+  esp_task_wdt_add(NULL);               // Subscribe current task to the Task Watchdog Timer
+
   Serial.begin(115200);
 
   WiFi.begin(ssid, password);
@@ -45,26 +51,34 @@ void setup(){
 }
   
 void loop() {
-
+  esp_task_wdt_reset();
 }
 
 void updateNTP( void * parameter )
 {
+  // Subscribe current task to the Task Watchdog Timer
+  esp_task_wdt_add(NULL);
+
   /* loop forever */
   for(;;)
   {
     timeClient.update();
     Serial.println("NTP updated");
-    vTaskDelay(60000/portTICK_PERIOD_MS);
+    vTaskDelay(4000/portTICK_PERIOD_MS);
+    esp_task_wdt_reset();
   }
 }
 
 void displaySerial( void * parameter )
 {
+  // Subscribe current task to the Task Watchdog Timer
+  esp_task_wdt_add(NULL);
+  
   /* loop forever */
   for(;;)
   {
     Serial.println(timeClient.getFormattedTime());
     vTaskDelay(1000/portTICK_PERIOD_MS);
+    esp_task_wdt_reset();
   }
 }
