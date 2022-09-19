@@ -59,12 +59,19 @@ void updateNTP( void * parameter )
   // Subscribe current task to the Task Watchdog Timer
   esp_task_wdt_add(NULL);
 
+  uint32_t currentMillis = 0, lastUpdateMillis = 0;
+
   /* loop forever */
   for(;;)
   {
-    timeClient.update();
-    Serial.println("NTP updated");
-    vTaskDelay(4000/portTICK_PERIOD_MS);
+    currentMillis = millis();
+    if (currentMillis - lastUpdateMillis > 60000)
+    {
+      timeClient.update();
+      Serial.println("NTP updated");
+      lastUpdateMillis = currentMillis;
+    }
+    vTaskDelay(100/portTICK_PERIOD_MS);
     esp_task_wdt_reset();
   }
 }
