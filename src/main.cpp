@@ -19,18 +19,22 @@ void setup(){
   Serial.begin(115200);
 
   WiFi.begin(ssid, password);
-
-  while ( WiFi.status() != WL_CONNECTED ) {
-    delay ( 500 );
-    Serial.print ( "." );
+  Serial.println("Connecting to WiFi");
+  while ( WiFi.status() != WL_CONNECTED )
+  {
+    vTaskDelay(100/portTICK_PERIOD_MS);
+    esp_task_wdt_reset();
   }
-  Serial.println("");
   Serial.println("WiFi Connected");
-  delay(500);
   
   timeClient.begin();
   timeClient.update();
   timeClient.setTimeOffset(7*3600); //In Thailand (UTC+7)
+  Serial.println("NTP updated");
+
+  // disconnect from WiFi but not erase AP config
+  WiFi.disconnect(false, true);
+  Serial.println("WiFi Disconnected");
   
   xTaskCreate(
   updateNTP,    /* Task function. */
@@ -67,8 +71,24 @@ void updateNTP( void * parameter )
     currentMillis = millis();
     if (currentMillis - lastUpdateMillis > 60000)
     {
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);
+      Serial.println("Connecting to WiFi");
+      
+      while ( WiFi.status() != WL_CONNECTED )
+      {
+        vTaskDelay(100/portTICK_PERIOD_MS);
+        esp_task_wdt_reset();
+      }
+      Serial.println("WiFi Connected");
+
       timeClient.update();
       Serial.println("NTP updated");
+      
+      // disconnect from WiFi but not erase AP config
+      WiFi.disconnect(false, true);
+      Serial.println("WiFi Disconnected");
+
       lastUpdateMillis = currentMillis;
     }
     vTaskDelay(100/portTICK_PERIOD_MS);
