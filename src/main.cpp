@@ -6,6 +6,9 @@
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
 
+void updateNTP( void * parameter );
+void displaySerial( void * parameter );
+
 void setup(){
   Serial.begin(115200);
 
@@ -44,8 +47,6 @@ void setup(){
 void loop() {
 
 }
-
-
 
 void updateNTP( void * parameter )
 {
