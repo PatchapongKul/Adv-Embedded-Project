@@ -54,7 +54,15 @@ void setup(){
   
 }
   
-void loop() {
+void loop() 
+{
+  if (timeClient.getHours() == 18)  // if it's 6 PM
+  {
+    Serial.println("ESP is going to sleep");
+    esp_sleep_enable_timer_wakeup(12*60*60*1e6);  // sleep for 12 hours
+    esp_task_wdt_delete(NULL);
+    esp_deep_sleep_start();
+  }
   esp_task_wdt_reset();
 }
 
