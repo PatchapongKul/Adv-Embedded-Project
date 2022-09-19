@@ -9,14 +9,30 @@
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
 
+hw_timer_t *timer0 = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE synch = portMUX_INITIALIZER_UNLOCKED;
+
 void updateNTP( void * parameter );
 void displaySerial( void * parameter );
+void IRAM_ATTR buttonPress(void);
+void IRAM_ATTR onTimer();
 
 void setup(){
   esp_task_wdt_init(WDT_TIMEOUT, true); // Initialize the Task Watchdog Timer
   esp_task_wdt_add(NULL);               // Subscribe current task to the Task Watchdog Timer
 
   Serial.begin(115200);
+
+  pinMode(2, OUTPUT);
+  digitalWrite(2, HIGH);
+  pinMode(0, INPUT_PULLUP);
+  attachInterrupt(0, buttonPress, FALLING);
+
+  timer0 = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer0, &onTimer, true);
+  timerAlarmWrite(timer0, 1000000, true);
+  timerAlarmEnable(timer0);
 
   WiFi.begin(ssid, password);
   Serial.println("Connecting to WiFi");
@@ -37,20 +53,20 @@ void setup(){
   Serial.println("WiFi Disconnected");
   
   xTaskCreate(
-  updateNTP,    /* Task function. */
-  "updateNTP",  /* name of task. */
-  10000,        /* Stack size of task */
-  NULL,         /* parameter of the task */
-  2,            /* priority of the task */
-  NULL);        /* Task handle to keep track of created task */
+    updateNTP,    /* Task function. */
+    "updateNTP",  /* name of task. */
+    10000,        /* Stack size of task */
+    NULL,         /* parameter of the task */
+    2,            /* priority of the task */
+    NULL);        /* Task handle to keep track of created task */
 
   xTaskCreate(
-  displaySerial,    /* Task function. */
-  "displaySerial",  /* name of task. */
-  10000,            /* Stack size of task */
-  NULL,             /* parameter of the task */
-  1,                /* priority of the task */
-  NULL);            /* Task handle to keep track of created task */
+    displaySerial,    /* Task function. */
+    "displaySerial",  /* name of task. */
+    10000,            /* Stack size of task */
+    NULL,             /* parameter of the task */
+    1,                /* priority of the task */
+    NULL);            /* Task handle to keep track of created task */
   
 }
   
@@ -116,4 +132,19 @@ void displaySerial( void * parameter )
     vTaskDelay(1000/portTICK_PERIOD_MS);
     esp_task_wdt_reset();
   }
+}
+
+void IRAM_ATTR buttonPress(void)
+{
+  portENTER_CRITICAL(&synch);
+  timerRestart(timer0);
+  digitalWrite(2, LOW);
+  portEXIT_CRITICAL(&synch); 
+}
+
+void IRAM_ATTR onTimer()
+{
+  portENTER_CRITICAL_ISR(&timerMux);
+  digitalWrite(2, HIGH);
+  portEXIT_CRITICAL_ISR(&timerMux);
 }
