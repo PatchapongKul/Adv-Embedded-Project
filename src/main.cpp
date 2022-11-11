@@ -1,7 +1,9 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include "secrets.h"
 #include <PubSubClient.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include "secrets.h"
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -11,6 +13,9 @@ long lastMsg = 0;
 char msg[50];
 int value = 0;
 
+String serverPath = "https://ds.netpie.io/feed/api/v1/datapoints/query";
+
+void postHTTP();
 void send2Server( void * parameter );
 void reconnect();
 
@@ -28,7 +33,10 @@ void setup()
   
   client.setServer(mqtt_server, 1883);
 
-  xTaskCreate(send2Server, "send2Server", 4000, NULL, 1, NULL);
+  // xTaskCreate(send2Server, "send2Server", 4000, NULL, 1, NULL);
+
+  postHTTP();
+
 }
   
 void loop() 
@@ -78,4 +86,70 @@ void reconnect() {
       delay(5000);
     }
   }
+}
+
+void postHTTP()
+{
+  HTTPClient http;
+  StaticJsonDocument<512> jsonResp;
+  StaticJsonDocument<384> jsonPost;
+  String stringPost;
+
+  JsonObject start_relative = jsonPost.createNestedObject("start_relative");
+  start_relative["value"] = 1;
+  start_relative["unit"] = "days";
+
+  JsonObject metrics_0 = jsonPost["metrics"].createNestedObject();
+  metrics_0["name"] = clientID;
+  metrics_0["tags"]["attr"] = "temp";
+  metrics_0["limit"] = 1;
+
+  JsonObject metrics_0_aggregators_0 = metrics_0["aggregators"].createNestedObject();
+  metrics_0_aggregators_0["name"] = "first";
+
+  JsonObject metrics_0_aggregators_0_sampling = metrics_0_aggregators_0.createNestedObject("sampling");
+  metrics_0_aggregators_0_sampling["value"] = "1";
+  metrics_0_aggregators_0_sampling["unit"] = "minutes";
+
+  serializeJson(jsonPost, stringPost);
+  Serial.println(stringPost);
+
+  String authen = "Device " + String(clientID) + ":" + String(token);
+
+  http.begin(serverPath.c_str());
+  http.addHeader("Authorization", authen);
+  http.addHeader("Content-Type", "application/json");
+  int httpResponseCode = http.POST(stringPost);
+  
+  if (httpResponseCode > 0) 
+  {
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    String payload = http.getString();
+    Serial.println(payload);
+
+    DeserializationError error = deserializeJson(jsonResp, payload);
+
+    if (error) {
+      Serial.print("deserializeJson() failed: ");
+      Serial.println(error.c_str());
+      return;
+    }
+
+    JsonObject queries_0_results_0 = jsonResp["queries"][0]["results"][0];
+
+    int64_t timeUTC = queries_0_results_0["values"][0][0];
+    float temp = queries_0_results_0["values"][0][1];
+
+    Serial.print("timestamp: ");
+    Serial.print(timeUTC);
+    Serial.print("\ttemp: ");
+    Serial.println(temp);
+  }
+  else {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+  }
+  
+  http.end();   // Free resources
 }
