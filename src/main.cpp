@@ -9,13 +9,10 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 const char* mqtt_server = "broker.netpie.io";
-long lastMsg = 0;
-char msg[50];
-int value = 0;
 
 String serverPath = "https://ds.netpie.io/feed/api/v1/datapoints/query";
 
-void postHTTP();
+void postHTTP( void * parameter );
 void send2Server( void * parameter );
 void reconnect();
 
@@ -33,10 +30,8 @@ void setup()
   
   client.setServer(mqtt_server, 1883);
 
-  // xTaskCreate(send2Server, "send2Server", 4000, NULL, 1, NULL);
-
-  postHTTP();
-
+  xTaskCreate(send2Server, "send2Server", 4000, NULL, 1, NULL);
+  xTaskCreate(postHTTP, "postHTTP", 6000, NULL, 2, NULL);
 }
   
 void loop() 
@@ -88,7 +83,7 @@ void reconnect() {
   }
 }
 
-void postHTTP()
+void postHTTP( void * parameter )
 {
   HTTPClient http;
   StaticJsonDocument<512> jsonResp;
@@ -112,44 +107,50 @@ void postHTTP()
   metrics_0_aggregators_0_sampling["unit"] = "minutes";
 
   serializeJson(jsonPost, stringPost);
-  Serial.println(stringPost);
+  // Serial.println(stringPost);
 
   String authen = "Device " + String(clientID) + ":" + String(token);
 
-  http.begin(serverPath.c_str());
-  http.addHeader("Authorization", authen);
-  http.addHeader("Content-Type", "application/json");
-  int httpResponseCode = http.POST(stringPost);
-  
-  if (httpResponseCode > 0) 
+  for(;;)
   {
-    Serial.print("HTTP Response code: ");
-    Serial.println(httpResponseCode);
-    String payload = http.getString();
-    Serial.println(payload);
+    http.begin(serverPath.c_str());
+    http.addHeader("Authorization", authen);
+    http.addHeader("Content-Type", "application/json");
+    int httpResponseCode = http.POST(stringPost);
+    
+    if (httpResponseCode > 0) 
+    {
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseCode);
+      String payload = http.getString();
+      // Serial.println(payload);
 
-    DeserializationError error = deserializeJson(jsonResp, payload);
+      DeserializationError error = deserializeJson(jsonResp, payload);
 
-    if (error) {
-      Serial.print("deserializeJson() failed: ");
-      Serial.println(error.c_str());
-      return;
+      if (error) {
+        Serial.print("deserializeJson() failed: ");
+        Serial.println(error.c_str());
+        vTaskDelay(1000);
+        continue;
+      }
+
+      JsonObject queries_0_results_0 = jsonResp["queries"][0]["results"][0];
+
+      int64_t timeUTC = queries_0_results_0["values"][0][0];
+      float temp = queries_0_results_0["values"][0][1];
+
+      Serial.print("timestamp: ");
+      Serial.print(timeUTC);
+      Serial.print("\ttemp: ");
+      Serial.println(temp);
     }
-
-    JsonObject queries_0_results_0 = jsonResp["queries"][0]["results"][0];
-
-    int64_t timeUTC = queries_0_results_0["values"][0][0];
-    float temp = queries_0_results_0["values"][0][1];
-
-    Serial.print("timestamp: ");
-    Serial.print(timeUTC);
-    Serial.print("\ttemp: ");
-    Serial.println(temp);
+    else {
+      Serial.print("Error code: ");
+      Serial.println(httpResponseCode);
+    }
+    
+    // Serial.println(uxTaskGetStackHighWaterMark(NULL));
+    http.end();   // Free resources 
+    vTaskDelay(5000);
   }
-  else {
-    Serial.print("Error code: ");
-    Serial.println(httpResponseCode);
-  }
-  
-  http.end();   // Free resources
 }
