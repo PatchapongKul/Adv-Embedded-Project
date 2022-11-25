@@ -3,10 +3,19 @@
 #include <PubSubClient.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <AES.h>
+#include <Crypto.h>
 #include "secrets.h"
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+AES128 aes128;
+
+union tempMSG
+{
+  float temp;
+  byte msg[4];
+};
 
 const char* mqtt_server = "broker.netpie.io";
 
@@ -30,7 +39,7 @@ void setup()
   
   client.setServer(mqtt_server, 1883);
 
-  xTaskCreate(send2Server, "send2Server", 4000, NULL, 1, NULL);
+  xTaskCreate(send2Server, "send2Server", 6000, NULL, 1, NULL);
   xTaskCreate(postHTTP, "postHTTP", 6000, NULL, 2, NULL);
 }
   
@@ -41,27 +50,41 @@ void loop()
 
 void send2Server( void * parameter )
 {
+  tempMSG encrypTemp;
+  byte cypherByte[16] = {0};
+  String cypherString;
+  String sentData;
+
   for(;;)
   {
-    float temp_data = random(300, 350) / 10.0;
-    String sent_data = "{\"data\":{\"temp\":";
+    encrypTemp.temp = random(300, 350) / 10.0;
     
-    sent_data += String(temp_data);
-    sent_data += "}}";
-          
-    if (sent_data.length() > 1)
-    {
-      while (!client.connected()) 
-      {
-        reconnect();
-      }
-      
-      client.publish("@shadow/data/update", sent_data.c_str());
-      Serial.print("Sent data: ");
-      Serial.println(sent_data);
-    } 
+    aes128.setKey(key, 16);
+    aes128.encryptBlock(cypherByte, encrypTemp.msg);
     
-    vTaskDelay(2000/portTICK_PERIOD_MS);
+    cypherString = "";
+    for(uint8_t i = 0; i < sizeof(cypherByte); i++) {
+      cypherString += (cypherByte[i] < 0x10 ? "0" : "") + String(cypherByte[i], HEX);
+    }
+
+    StaticJsonDocument<96> dataJSON;
+    JsonObject data = dataJSON.createNestedObject("data");
+    data["temp"] = encrypTemp.temp;
+    data["temp_encryp"] = cypherString;
+
+    sentData = "";
+    serializeJson(dataJSON, sentData);
+    
+    while (!client.connected()) {
+      reconnect();
+    }
+    
+    client.publish("@shadow/data/update", sentData.c_str());
+    Serial.print("Sent data: ");
+    Serial.println(sentData);
+
+    // Serial.println(uxTaskGetStackHighWaterMark(NULL));
+    vTaskDelay(5000/portTICK_PERIOD_MS);
   }
 }
 
@@ -86,9 +109,13 @@ void reconnect() {
 void postHTTP( void * parameter )
 {
   HTTPClient http;
-  StaticJsonDocument<512> jsonResp;
+  StaticJsonDocument<768> jsonResp;
   StaticJsonDocument<384> jsonPost;
   String stringPost;
+
+  tempMSG decrypTemp;
+  byte tempEncrypByte[16] = {0};
+  aes128.setKey(key, 16);   // Setting Key for AES
 
   JsonObject start_relative = jsonPost.createNestedObject("start_relative");
   start_relative["value"] = 1;
@@ -96,7 +123,10 @@ void postHTTP( void * parameter )
 
   JsonObject metrics_0 = jsonPost["metrics"].createNestedObject();
   metrics_0["name"] = clientID;
-  metrics_0["tags"]["attr"] = "temp";
+
+  JsonArray metrics_0_tags_attr = metrics_0["tags"].createNestedArray("attr");
+  metrics_0_tags_attr.add("temp");
+  metrics_0_tags_attr.add("temp_encryp");
   metrics_0["limit"] = 1;
 
   JsonObject metrics_0_aggregators_0 = metrics_0["aggregators"].createNestedObject();
@@ -135,14 +165,46 @@ void postHTTP( void * parameter )
       }
 
       JsonObject queries_0_results_0 = jsonResp["queries"][0]["results"][0];
-
       int64_t timeUTC = queries_0_results_0["values"][0][0];
       float temp = queries_0_results_0["values"][0][1];
+
+      JsonObject queries_0_results_1 = jsonResp["queries"][0]["results"][1];
+      const char* cypherChar = queries_0_results_1["values"][0][1];
 
       Serial.print("timestamp: ");
       Serial.print(timeUTC);
       Serial.print("\ttemp: ");
-      Serial.println(temp);
+      Serial.print(temp);
+      Serial.print("\ttempEencrypChar: ");
+      Serial.println(cypherChar);
+
+      String tmpStr = String(cypherChar);
+      byte tmpByte[2] = {0};
+      for (uint8_t i = 0, k = 0; i < tmpStr.length(); i++)
+      {
+        if (tmpStr[i] >= '0' && tmpStr[i] <= '9') {
+          tmpByte[k++] = tmpStr[i] - '0';
+        }
+        else if (tmpStr[i] >= 'a' && tmpStr[i] <= 'f') {
+          tmpByte[k++] = tmpStr[i] - 'a' + 10;
+        }
+        if (k > 1) {
+          tempEncrypByte[i/2] = (tmpByte[0] << 4) | tmpByte[1];
+          memset(tmpByte, 0, 2);
+          k = 0;
+        }
+      }
+
+      // Serial.print("tempEencrypByte: ");
+      // for(uint8_t i = 0; i < sizeof(tempEncrypByte); i++) {
+      //   Serial.print((tempEncrypByte[i] < 0x10 ? "0":"") + String(tempEncrypByte[i], HEX));
+      // }
+      // Serial.println();
+
+      aes128.decryptBlock(decrypTemp.msg, tempEncrypByte);
+
+      Serial.print("Decrypted Temp: ");
+      Serial.println(decrypTemp.temp);
     }
     else {
       Serial.print("Error code: ");
@@ -151,6 +213,6 @@ void postHTTP( void * parameter )
     
     // Serial.println(uxTaskGetStackHighWaterMark(NULL));
     http.end();   // Free resources 
-    vTaskDelay(5000);
+    vTaskDelay(10000);
   }
 }
