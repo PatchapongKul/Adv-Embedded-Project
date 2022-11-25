@@ -169,12 +169,15 @@ void postHTTP( void * parameter )
       float temp = queries_0_results_0["values"][0][1];
 
       JsonObject queries_0_results_1 = jsonResp["queries"][0]["results"][1];
+      int64_t timeUTCEncryp = queries_0_results_1["values"][0][0];
       const char* cypherChar = queries_0_results_1["values"][0][1];
 
       Serial.print("timestamp: ");
       Serial.print(timeUTC);
       Serial.print("\ttemp: ");
-      Serial.print(temp);
+      Serial.println(temp);
+      Serial.print("timestamp: ");
+      Serial.print(timeUTCEncryp);
       Serial.print("\ttempEencrypChar: ");
       Serial.println(cypherChar);
 
