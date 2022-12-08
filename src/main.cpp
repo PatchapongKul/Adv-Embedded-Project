@@ -47,7 +47,7 @@ void setup() {
 
   pinMode(LEDpin, OUTPUT);
   pinMode(PIRpin, INPUT);
-  attachInterrupt(PIRpin, PIRtrig, HIGH);
+  attachInterrupt(PIRpin, PIRtrig, RISING);
 
   timer0 = timerBegin(0, 8000, true);
   timerAttachInterrupt(timer0, &onTimer, true);
@@ -76,8 +76,10 @@ void callback(char* topic, byte* payload, unsigned int length)
   if (String(topic) == "@msg/led") {
     if (msg == "on") {
       digitalWrite(LEDpin, LOW);
+      stateChange = true;
     } else if (msg == "off") {
       digitalWrite(LEDpin, HIGH);
+      stateChange = true;
     }
   }
 }
