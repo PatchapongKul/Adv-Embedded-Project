@@ -4,7 +4,15 @@
     "PIR": {
       "operation": {
         "store": {
-          "ttl": "7d"
+          "ttl": "1d"
+        }
+      },
+      "type": "number"
+    },
+    "LED": {
+      "operation": {
+        "store": {
+          "ttl": "1d"
         }
       },
       "type": "number"
