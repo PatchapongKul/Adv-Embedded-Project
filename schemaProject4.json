@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "temp": {
+      "operation": {
+        "store": {
+          "ttl": "1d"
+        }
+      },
+      "type": "number"
+    },
+    "temp_encryp": {
+      "operation": {
+        "store": {
+          "ttl": "1d"
+        }
+      },
+      "type": "string"
+    }
+  }
+}
