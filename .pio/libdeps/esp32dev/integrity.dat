@@ -1,5 +1,2 @@
-arduino-libraries/Arduino_HTS221@^1.0.0
 knolleary/PubSubClient@^2.8
 bblanchon/ArduinoJson@^6.19.4
-arduino-libraries/NTPClient@^3.2.1
-rweather/Crypto@^0.4.0
